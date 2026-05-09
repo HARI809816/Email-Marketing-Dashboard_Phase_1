@@ -63,7 +63,8 @@ from app.database import (
     clients_collection,
     manuscripts_collection,
     orders_collection,
-    payments_collection,
+    payments_collection, 
+    payment_history_collection,
     otps_collection
 )
 
@@ -1217,10 +1218,11 @@ def get_payments(current_user: dict = Depends(get_current_user)):
 @app.get("/payments/history", response_model=ApiResponse[list[PaymentHistoryItem]])
 def get_payment_history(client_id: Optional[str] = None, order_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     """
-    Detailed payment history with client names and order titles.
+    Detailed payment history from the flattened payment_history_collection.
     """
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
+        # Filter by clients handled by this employee
         my_client_ids = clients_collection.distinct("client_id", {"client_handler": current_user.get("email")})
         query["client_id"] = {"$in": my_client_ids}
     
@@ -1229,57 +1231,8 @@ def get_payment_history(client_id: Optional[str] = None, order_id: Optional[str]
     if order_id:
         query["order_id"] = order_id
 
-    pipeline = [
-        {"$match": query},
-        {
-            "$lookup": {
-                "from": "clients",
-                "localField": "client_id",
-                "foreignField": "client_id",
-                "as": "client_info"
-            }
-        },
-        {
-            "$lookup": {
-                "from": "orders",
-                "localField": "order_id",
-                "foreignField": "order_id",
-                "as": "order_info"
-            }
-        },
-        {
-            "$unwind": {"path": "$client_info", "preserveNullAndEmptyArrays": True}
-        },
-        {
-            "$unwind": {"path": "$order_info", "preserveNullAndEmptyArrays": True}
-        },
-        {
-            "$project": {
-                "_id": 0,
-                "client_name": "$client_info.name",
-                "client_id": {"$ifNull": ["$client_id", "$order_info.client_id"]},
-                "order_id": 1,
-                "reference_id": {"$ifNull": ["$reference_id", "$order_info.reference_id"]},
-                "amount": {"$ifNull": ["$amount", "$order_info.total_amount"]},
-                "paid_amount": {"$ifNull": ["$paid_amount", 0.0]},
-                "payment_date": 1,
-                "payment_received_account": 1,
-                "order_title": "$order_info.title",
-                "phase_1_payment": {"$ifNull": ["$phase_1_payment", 0.0]},
-                "phase_1_payment_date": 1,
-                "phase_1_payment_details": 1,
-                "phase_2_payment": {"$ifNull": ["$phase_2_payment", 0.0]},
-                "phase_2_payment_date": 1,
-                "phase_2_payment_details": 1,
-                "phase_3_payment": {"$ifNull": ["$phase_3_payment", 0.0]},
-                "phase_3_payment_date": 1,
-                "phase_3_payment_details": 1
-            }
-        },
-        {"$sort": {"payment_date": -1}}
-    ]
+    history = list(payment_history_collection.find(query).sort("payment_date", -1))
     
-    history = list(payments_collection.aggregate(pipeline))
     return {
         "status_code": 200,
         "status": "success",
@@ -1560,6 +1513,36 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             {"$set": payment_updates_raw},
             upsert=True
         )
+        
+        # Sync with payment_history_collection
+        # We fetch the latest data to ensure the history is fully updated
+        latest_payment = payments_collection.find_one({"order_id": order_custom_id})
+        if latest_payment:
+            # Also get client and order info in case they were updated
+            client_doc = clients_collection.find_one({"client_id": order["client_id"]})
+            order_doc = orders_collection.find_one({"_id": ObjectId(order_db_id)})
+            
+            history_update = {
+                "client_name": client_doc.get("name") if client_doc else "Unknown Client",
+                "client_id": order["client_id"],
+                "order_id": order_custom_id,
+                "reference_id": order_doc.get("reference_id"),
+                "amount": order_doc.get("total_amount") or 0.0,
+                "paid_amount": latest_payment.get("paid_amount") or 0.0,
+                "payment_date": latest_payment.get("payment_date") or latest_payment.get("created_at") or datetime.utcnow(),
+                "payment_received_account": latest_payment.get("payment_received_account"),
+                "order_title": order_doc.get("title") or "Unknown Title",
+                "phase_1_payment": latest_payment.get("phase_1_payment", 0.0),
+                "phase_1_payment_date": latest_payment.get("phase_1_payment_date"),
+                "phase_1_payment_details": latest_payment.get("phase_1_payment_details"),
+                "phase_2_payment": latest_payment.get("phase_2_payment", 0.0),
+                "phase_2_payment_date": latest_payment.get("phase_2_payment_date"),
+                "phase_2_payment_details": latest_payment.get("phase_2_payment_details"),
+                "phase_3_payment": latest_payment.get("phase_3_payment", 0.0),
+                "phase_3_payment_date": latest_payment.get("phase_3_payment_date"),
+                "phase_3_payment_details": latest_payment.get("phase_3_payment_details"),
+            }
+            payment_history_collection.insert_one(history_update)
 
 
     return {
@@ -1707,6 +1690,30 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
         payment_data[f"phase_{phase}_payment_date"] = payment_data["payment_date"]
 
         payments_collection.insert_one(payment_data)
+
+        # Sync with payment_history_collection
+        history_item = {
+            "client_name": request.client_name,
+            "client_id": client_id,
+            "order_id": order_id,
+            "reference_id": request.reference_id,
+            "amount": request.total_amount or request.payment_amount,
+            "paid_amount": request.payment_amount,
+            "payment_date": payment_data["payment_date"],
+            "payment_received_account": request.payment_received_account,
+            "order_title": request.title or "Unknown Title",
+            "phase_1_payment": payment_data.get("phase_1_payment", 0.0),
+            "phase_1_payment_date": payment_data.get("phase_1_payment_date"),
+            "phase_1_payment_details": payment_data.get("phase_1_payment_details"),
+            "phase_2_payment": payment_data.get("phase_2_payment", 0.0),
+            "phase_2_payment_date": payment_data.get("phase_2_payment_date"),
+            "phase_2_payment_details": payment_data.get("phase_2_payment_details"),
+            "phase_3_payment": payment_data.get("phase_3_payment", 0.0),
+            "phase_3_payment_date": payment_data.get("phase_3_payment_date"),
+            "phase_3_payment_details": payment_data.get("phase_3_payment_details"),
+            "created_at": datetime.utcnow()
+        }
+        payment_history_collection.insert_one(history_item)
 
         # Update order total_amount only if it wasn't already set from request
         if not order_data.get("total_amount"):

@@ -10,6 +10,7 @@ clients_collection = db["clients"]
 orders_collection = db["orders"]
 manuscripts_collection = db["manuscripts"]
 payments_collection = db["payments"]
+payment_history_collection = db["payment_history"]
 otps_collection = db["otps"]
 
 # --- INDEXES FOR PERFORMANCE ---
@@ -28,3 +29,8 @@ payments_collection.create_index([("order_id", 1), ("phase", 1)])
 payments_collection.create_index("client_id")
 payments_collection.create_index("order_id")  # Separate index for lookups
 payments_collection.create_index("phase")  # For phase filtering in aggregation
+
+# Payment History Indexes
+payment_history_collection.create_index("client_id")
+payment_history_collection.create_index("order_id") # Removed unique=True to allow append-only history
+payment_history_collection.create_index("payment_date")
