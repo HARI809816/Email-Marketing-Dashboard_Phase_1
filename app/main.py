@@ -1514,35 +1514,16 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             upsert=True
         )
         
-        # Sync with payment_history_collection
-        # We fetch the latest data to ensure the history is fully updated
-        latest_payment = payments_collection.find_one({"order_id": order_custom_id})
-        if latest_payment:
-            # Also get client and order info in case they were updated
-            client_doc = clients_collection.find_one({"client_id": order["client_id"]})
-            order_doc = orders_collection.find_one({"_id": ObjectId(order_db_id)})
-            
-            history_update = {
-                "client_name": client_doc.get("name") if client_doc else "Unknown Client",
-                "client_id": order["client_id"],
-                "order_id": order_custom_id,
-                "reference_id": order_doc.get("reference_id"),
-                "amount": order_doc.get("total_amount") or 0.0,
-                "paid_amount": latest_payment.get("paid_amount") or 0.0,
-                "payment_date": latest_payment.get("payment_date") or latest_payment.get("created_at") or datetime.utcnow(),
-                "payment_received_account": latest_payment.get("payment_received_account"),
-                "order_title": order_doc.get("title") or "Unknown Title",
-                "phase_1_payment": latest_payment.get("phase_1_payment", 0.0),
-                "phase_1_payment_date": latest_payment.get("phase_1_payment_date"),
-                "phase_1_payment_details": latest_payment.get("phase_1_payment_details"),
-                "phase_2_payment": latest_payment.get("phase_2_payment", 0.0),
-                "phase_2_payment_date": latest_payment.get("phase_2_payment_date"),
-                "phase_2_payment_details": latest_payment.get("phase_2_payment_details"),
-                "phase_3_payment": latest_payment.get("phase_3_payment", 0.0),
-                "phase_3_payment_date": latest_payment.get("phase_3_payment_date"),
-                "phase_3_payment_details": latest_payment.get("phase_3_payment_details"),
-            }
-            payment_history_collection.insert_one(history_update)
+        # Append the response from the frontend with extra columns to payment_history
+        history_record = payment_updates_raw.copy()
+        history_record.update({
+            "client_id": order["client_id"],
+            "order_id": order_custom_id,
+            "reference_id": order.get("reference_id"),
+            "created_at": datetime.utcnow()
+        })
+        payment_history_collection.insert_one(history_record)
+
 
 
     return {
