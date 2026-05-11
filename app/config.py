@@ -22,5 +22,6 @@ EMAIL_FROM = os.getenv("EMAIL_FROM")
 # Comma-separated list. Strips trailing slashes to avoid common CORS errors.
 raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173," \
 "https://marketing-dashboard123.vercel.app," \
-"https://dashboard-marketing-team-phase2.vercel.app")
+"https://dashboard-marketing-team-phase2.vercel.app," \
+"https://marketing-dashboard-one-zeta.vercel.app")
 ALLOWED_ORIGINS = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
