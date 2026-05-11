@@ -21,7 +21,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://email-marketing-team-dashboard-v2.vercel.app"
+          "value": "https://dashboard-marketing-team-phase2.vercel.app"
         },
         {
           "key": "Access-Control-Allow-Methods",
