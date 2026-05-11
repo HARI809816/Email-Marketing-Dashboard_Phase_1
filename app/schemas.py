@@ -497,6 +497,8 @@ class PaymentHistoryItem(BaseModel):
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+
 
 class PendingClientDetail(BaseModel):
     client_id: str

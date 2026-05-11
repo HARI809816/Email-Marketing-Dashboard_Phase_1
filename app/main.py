@@ -1231,7 +1231,8 @@ def get_payment_history(client_id: Optional[str] = None, order_id: Optional[str]
     if order_id:
         query["order_id"] = order_id
 
-    history = list(payment_history_collection.find(query).sort("payment_date", -1))
+    history = list(payment_history_collection.find(query).sort("created_at", -1))
+
     
     return {
         "status_code": 200,
