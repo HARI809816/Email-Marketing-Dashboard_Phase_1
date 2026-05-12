@@ -830,7 +830,7 @@ def get_user_dashboard_data(client_match: dict):
                             "paid_order_count": {
                                 "$sum": {
                                     "$cond": [
-                                        {"$gt": ["$order_paid", 0]},
+                                        {"$gte": ["$order_paid", "$order_total_usd"]},
                                         1, 0
                                     ]
                                 }
@@ -840,7 +840,7 @@ def get_user_dashboard_data(client_match: dict):
                                     "$cond": [
                                         {
                                             "$and": [
-                                                {"$eq": ["$order_paid", 0]},
+                                                {"$lt": ["$order_paid", "$order_total_usd"]},
                                                 {"$ne": ["$order_status", "Inactive"]}
                                             ]
                                         },
