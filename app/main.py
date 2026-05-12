@@ -1,4 +1,6 @@
 from typing import Optional, Any
+import re
+
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -242,6 +244,54 @@ def get_user_email_by_name(name_or_email: str) -> str:
         return user.get("email")
         
     return name_or_email
+
+
+def generate_custom_id(prefix: str, collection, current_user: dict):
+    """
+    Generates a unique ID based on the user's assigned range.
+    Format: {prefix}-{YYYY}-{num}
+    """
+    year = datetime.utcnow().strftime("%Y")
+    
+    # 1. Determine range
+    if current_user["role"] == UserRole.ADMIN:
+        start, end = 1, 999
+    else:
+        # Default range if not set
+        start = current_user.get("id_range_start", 100)
+        end = current_user.get("id_range_end", 200)
+    
+    # 2. Find existing IDs in this range for this year
+    field_name = "client_id" if prefix == "CL" else "reference_id"
+    pattern = f"^{prefix}-{year}-(\\d+)$"
+    
+    cursor = collection.find({
+        field_name: {"$regex": pattern}
+    })
+    
+    existing_nums = []
+    for doc in cursor:
+        val = doc.get(field_name)
+        match = re.search(f"{prefix}-{year}-(\\d+)", val)
+        if match:
+            num = int(match.group(1))
+            if start <= num <= end:
+                existing_nums.append(num)
+    
+    # 3. Find next available number
+    if not existing_nums:
+        next_num = start
+    else:
+        next_num = max(existing_nums) + 1
+        
+    if next_num > end:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Limit reached for your assigned ID range ({start}-{end}). Please contact Admin."
+        )
+        
+    return f"{prefix}-{year}-{next_num:03d}"
+
 
 
 @app.get("/", response_model=ApiResponse[dict])
@@ -642,14 +692,19 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
 
     users_collection.update_one(
         {"email": data.email},
-        {"$set": {"permissions": data.permissions}}
+        {"$set": {
+            "id_range_start": data.id_range_start,
+            "id_range_end": data.id_range_end
+        }}
     )
+
     return {
         "status_code": 200,
         "status": "success",
-        "message": f"Permissions updated for {data.email}",
+        "message": f"ID range updated for {data.email}",
         "data": None
     }
+
 
 @app.post("/users/profiles/append", response_model=ApiResponse[dict])
 def append_profile_name(data: ProfileUpdate, current_user: dict = Depends(get_current_user)):
@@ -977,9 +1032,12 @@ def get_user_details(email: str, current_user: dict = Depends(require_manager_or
 
 @app.post("/clients", response_model=ApiResponse[ClientResponse], status_code=status.HTTP_201_CREATED)
 def create_client(client: ClientCreate, current_user: dict = Depends(get_current_user)):
-    # Check if client_id already exists
-    if clients_collection.find_one({"client_id": client.client_id}):
+    # Auto-generate client_id if not provided
+    if not client.client_id:
+        client.client_id = generate_custom_id("CL", clients_collection, current_user)
+    elif clients_collection.find_one({"client_id": client.client_id}):
         raise HTTPException(status_code=400, detail="Client ID already exists")
+
 
     client_dict = client.model_dump()
     
@@ -1145,9 +1203,12 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
         if not manuscripts_collection.find_one({"manuscript_id": order.manuscript_id}):
             raise HTTPException(status_code=400, detail="Invalid manuscript_id")
     
-    # Ensure reference_id is unique across all orders
-    if orders_collection.find_one({"reference_id": order.reference_id}):
+    # Auto-generate reference_id if not provided
+    if not order.reference_id:
+        order.reference_id = generate_custom_id("REF", orders_collection, current_user)
+    elif orders_collection.find_one({"reference_id": order.reference_id}):
         raise HTTPException(status_code=400, detail="This reference ID already exists")
+
     
     order_dict = order.model_dump()
     order_dict["created_at"] = datetime.utcnow()
@@ -1550,8 +1611,16 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
     - payment_drive_link flows from client to order automatically
     """
 
+    # Step 1: Handle Client ID and Reference ID Auto-generation
+    if not request.client_id and not clients_collection.find_one({"name": request.client_name}):
+        request.client_id = generate_custom_id("CL", clients_collection, current_user)
+    
+    if not request.reference_id:
+        request.reference_id = generate_custom_id("REF", orders_collection, current_user)
+
     # Step 1: Handle Client Creation/Update
-    existing_client = clients_collection.find_one({"client_id": request.client_id})
+    existing_client = clients_collection.find_one({"client_id": request.client_id}) if request.client_id else clients_collection.find_one({"name": request.client_name})
+
 
     if not existing_client:
         # Create new client

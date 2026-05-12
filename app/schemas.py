@@ -32,6 +32,9 @@ class UserBase(BaseModel):
     phone_number: Optional[str] = None
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
     branch: Optional[str] = None
+    id_range_start: Optional[int] = None
+    id_range_end: Optional[int] = None
+
 
 class UserCreate(UserBase):
     full_name: Optional[str] = None
@@ -45,7 +48,10 @@ class UserCreate(UserBase):
 
 class PermissionUpdate(BaseModel):
     email: EmailStr
-    permissions: dict[str, list[str]]
+    id_range_start: Optional[int] = None
+    id_range_end: Optional[int] = None
+
+
 
 class ProfileUpdate(BaseModel):
     email: EmailStr
@@ -127,7 +133,8 @@ class OTPVerifyRequest(BaseModel):
 # --- SCHEMA FROM ERD ---
 
 class ClientBase(BaseModel):
-    client_id: str
+    client_id: Optional[str] = None
+
     name: str
     country: Optional[str] = None
     email: Optional[str] = None
@@ -201,7 +208,8 @@ class ManuscriptResponse(ManuscriptBase):
 
 class OrderBase(BaseModel):
     order_id: str
-    reference_id: str  # Unique per order — created by users (employees/admins)
+    reference_id: Optional[str] = None  # Unique per order — created by users (employees/admins)
+
     profile_name: Optional[str] = None # The specific profile used to handle this order
     client_ref_no: Optional[str] = None  # Optional — given by the client
     s_no: Optional[int] = None
@@ -246,6 +254,7 @@ class OrderResponse(OrderBase):
 class PaymentBase(BaseModel):
     client_ref_number: Optional[str] = None
     reference_id: Optional[str] = None  # Copied from order for easy lookup
+
     order_id: Optional[str] = None
     client_id: str # Ref to Client
     phase: int = 1
@@ -399,7 +408,8 @@ class UnifiedCreateRequest(BaseModel):
     """Unified schema for creating client, order, manuscript, and payment records in one API call"""
 
     # Client fields
-    client_id: str
+    client_id: Optional[str] = None
+
     client_name: str
     client_country: Optional[str] = None
     client_email: Optional[str] = None
@@ -417,7 +427,8 @@ class UnifiedCreateRequest(BaseModel):
     payment_drive_link: Optional[str] = None  # New field for payment drive link
     client_handler: Optional[str] = None  # For admin/manager to assign a handler
     order_date: Optional[str] = None
-    reference_id: str
+    reference_id: Optional[str] = None
+
     profile_name: str  # From user profile
     title: Optional[str] = None
     order_type: Optional[str] = None  # writing | modification | proofreading
