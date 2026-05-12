@@ -858,6 +858,7 @@ def get_user_dashboard_data(client_match: dict):
                                     "order_status": "$order_status",
                                     "total_amount": "$order_total_usd",
                                     "paid_amount": "$order_paid",
+                                    "is_new_order": "$is_new_order",
                                     "payment_status": {
                                         "$cond": [
                                             {"$gte": ["$order_paid", "$order_total_usd"]},
@@ -937,6 +938,7 @@ def get_user_dashboard_data(client_match: dict):
                 "country": c.get("country"),        
                 "total_amount": round(order.get("total_amount", 0.0), 2),
                 "paid_amount": round(order.get("paid_amount", 0.0), 2),
+                "is_new_order": order.get("is_new_order", "yes"),
                 "created_at": order.get("created_at"),
                 "order_date": order.get("order_date")
             })
