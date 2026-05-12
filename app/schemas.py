@@ -470,7 +470,7 @@ class UnifiedCreateRequest(BaseModel):
         "order_date", "journal_name", "title", "order_type", "index", "rank",
         "write_start_date", "profile_start_date", "writing_start_date", "writing_end_date",
         "modification_start_date", "modification_end_date", "po_start_date", "po_end_date",
-        "payment_date", "payment_received_account",
+        "payment_date", "payment_received_account", "client_id", "reference_id",
         mode="before"
     )
     @classmethod
@@ -479,11 +479,11 @@ class UnifiedCreateRequest(BaseModel):
             return None
         return v
 
-    @field_validator("client_id", "client_name", "reference_id", mode="before")
+    @field_validator("client_name", mode="before")
     @classmethod
-    def ensure_id_not_empty(cls, v: Any) -> Any:
+    def ensure_name_not_empty(cls, v: Any) -> Any:
         if isinstance(v, str) and v.strip() == "":
-            raise ValueError("ID fields cannot be empty")
+            raise ValueError("Client name cannot be empty")
         return v
 
 # --- NEW PAYMENT ANALYTICS SCHEMAS ---
