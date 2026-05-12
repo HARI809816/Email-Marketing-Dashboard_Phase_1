@@ -451,7 +451,7 @@ class UnifiedCreateRequest(BaseModel):
     writing_end_date: Optional[str] = None
     modification_start_date: Optional[str] = None
     modification_end_date: Optional[str] = None
-    is_new_order: Optional[str] = "yes"
+    is_new_order: Optional[str] = "YES"
 
     # Optional manuscript fields
     create_manuscript: bool = False
