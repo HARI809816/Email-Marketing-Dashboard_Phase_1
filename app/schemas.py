@@ -91,6 +91,7 @@ class OrderStatusDetail(BaseModel):
     reference_id: Optional[str] = None
     order_status: Optional[str] = None
     payment_status: Optional[str] = None
+    total_amount: Optional[float] = 0.0
     paid_amount: Optional[float] = None
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     order_date: Optional[datetime] = Field(default_factory=datetime.utcnow)

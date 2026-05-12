@@ -856,6 +856,7 @@ def get_user_dashboard_data(client_match: dict):
                                     "client_id": "$client_id",
                                     "reference_id": "$reference_id",
                                     "order_status": "$order_status",
+                                    "total_amount": "$order_total_usd",
                                     "paid_amount": "$order_paid",
                                     "payment_status": {
                                         "$cond": [
@@ -934,6 +935,7 @@ def get_user_dashboard_data(client_match: dict):
                 "order_status": order.get("order_status"),
                 "payment_status": order.get("payment_status"),
                 "country": c.get("country"),        
+                "total_amount": round(order.get("total_amount", 0.0), 2),
                 "paid_amount": round(order.get("paid_amount", 0.0), 2),
                 "created_at": order.get("created_at"),
                 "order_date": order.get("order_date")
