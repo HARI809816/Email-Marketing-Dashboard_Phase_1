@@ -257,7 +257,7 @@ def generate_custom_id(prefix: str, collection, current_user: dict):
     
     # 1. Determine range
     if current_user["role"] == UserRole.ADMIN:
-        start, end = 1, 999
+        start, end = 1, 9999
     else:
         # Default range if not set
         start = current_user.get("id_range_start", 100)
@@ -292,7 +292,37 @@ def generate_custom_id(prefix: str, collection, current_user: dict):
             detail=f"Limit reached for your assigned ID range ({start}-{end}). Please contact Admin."
         )
         
-    return f"{prefix}-{year}-{next_num:03d}"
+    return f"{prefix}-{year}-{next_num:04d}"
+
+def is_id_range_overlapping(start: int, end: int, exclude_email: Optional[str] = None):
+    """
+    Checks if a given ID range overlaps with any existing user's range.
+    """
+    if start is None or end is None:
+        return False
+        
+    query = {
+        "role": UserRole.EMPLOYEE,
+        "id_range_start": {"$exists": True},
+        "id_range_end": {"$exists": True}
+    }
+    if exclude_email:
+        query["email"] = {"$ne": exclude_email}
+        
+    existing_users = users_collection.find(query)
+    
+    for user in existing_users:
+        e_start = user.get("id_range_start")
+        e_end = user.get("id_range_end")
+        
+        if e_start is None or e_end is None:
+            continue
+            
+        # Check for overlap: (StartA <= EndB) and (EndA >= StartB)
+        if (start <= e_end) and (end >= e_start):
+            return user.get("email")
+            
+    return None
 
 
 
@@ -524,6 +554,15 @@ def create_user(user: UserCreate, current_user: dict = Depends(require_manager_o
             detail="Email already registered"
         )
     
+    # Check for ID range overlap
+    if user.id_range_start is not None and user.id_range_end is not None:
+        overlapping_user = is_id_range_overlapping(user.id_range_start, user.id_range_end)
+        if overlapping_user:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"ID range {user.id_range_start}-{user.id_range_end} overlaps with user: {overlapping_user}"
+            )
+    
     # Logic for Admin role restriction
     if user.role == UserRole.ADMIN:
         # Only existing Admin can create another Admin
@@ -691,6 +730,15 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Permissions can only be set for Employees"
         )
+
+    # Check for ID range overlap
+    if data.id_range_start is not None and data.id_range_end is not None:
+        overlapping_user = is_id_range_overlapping(data.id_range_start, data.id_range_end, exclude_email=data.email)
+        if overlapping_user:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"ID range {data.id_range_start}-{data.id_range_end} overlaps with user: {overlapping_user}"
+            )
 
     users_collection.update_one(
         {"email": data.email},
