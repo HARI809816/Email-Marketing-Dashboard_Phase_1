@@ -8,6 +8,20 @@ class UserRole(str, Enum):
     MANAGER = "manager"
     EMPLOYEE = "employee"
 
+ORDER_TYPE_OPTIONS = [
+    "WO / PO",
+    "MO / PO",
+    "WO",
+    "PO",
+    "MO/RV",
+    "MO",
+    "Thesis writing",
+    "WO/ Implementation/PO",
+    "Review paper writing",
+    "WO/Conference",
+    "Improvement"
+]
+
 T = TypeVar("T")
 
 class ApiResponse(BaseModel, Generic[T]):
@@ -145,6 +159,7 @@ class ClientBase(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     affiliation: Optional[str] = None
+    order_type: Optional[str] = None
     
     total_orders: int = 0
     client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
@@ -332,6 +347,7 @@ class DashboardOrderResponse(BaseModel):
     remarks: Optional[str] = None
     client_drive_link: Optional[str] = None
     payment_drive_link: Optional[str] = None
+    client_order_type: Optional[str] = None
     clients_details: Optional[str] = None
     amount: Optional[float] = None
     order_status: Optional[str] = None
@@ -385,6 +401,7 @@ class DashboardUpdate(BaseModel):
     po_end_date: Optional[datetime] = None
     payment_status: Optional[str] = None
     remarks: Optional[str] = None
+    client_order_type: Optional[str] = None
     clients_details: Optional[str] = None
     client_details: Optional[str] = None  # Fallback for UI compatibility
     client_drive_link: Optional[str] = None
@@ -423,6 +440,7 @@ class UnifiedCreateRequest(BaseModel):
     bank_account: Optional[str] = None
     
     # Order fields
+    client_order_type: Optional[str] = None  # For client
     clients_details: Optional[str] = None  # New field for detailed client information
     client_details: Optional[str] = None  # Fallback for UI compatibility
     client_drive_link: Optional[str] = None  # New field for client drive link
@@ -472,7 +490,7 @@ class UnifiedCreateRequest(BaseModel):
         "order_date", "journal_name", "title", "order_type", "index", "rank",
         "write_start_date", "profile_start_date", "writing_start_date", "writing_end_date",
         "modification_start_date", "modification_end_date", "po_start_date", "po_end_date",
-        "payment_date", "payment_received_account", "client_id", "reference_id",
+        "payment_date", "payment_received_account", "client_id", "reference_id", "client_order_type",
         mode="before"
     )
     @classmethod

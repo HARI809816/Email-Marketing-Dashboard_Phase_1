@@ -35,7 +35,9 @@ from app.schemas import (
     UnifiedCreateRequest,
     PaymentHistoryItem,
     PendingSummaryResponse,
-    PendingClientDetail
+    PendingClientDetail,
+    ORDER_TYPE_OPTIONS
+
 )
 import random
 import smtplib
@@ -1074,7 +1076,47 @@ def get_clients(current_user: dict = Depends(get_current_user)):
     query = {}
     if current_user["role"] == UserRole.EMPLOYEE:
         query = {"client_handler": current_user.get("email")}
-    clients = [format_mongo_id(c) for c in clients_collection.find(query)]
+
+    # Dynamic aggregation to pull order_type from associated orders
+    pipeline = [
+        {"$match": query},
+        {
+            "$lookup": {
+                "from": "orders",
+                "localField": "client_id",
+                "foreignField": "client_id",
+                "as": "client_orders"
+            }
+        },
+        {
+            "$addFields": {
+                "order_type": {
+                    "$reduce": {
+                        "input": {
+                            "$setUnion": {
+                                "$filter": {
+                                    "input": "$client_orders.order_type",
+                                    "as": "ot",
+                                    "cond": { "$and": [ { "$ne": ["$$ot", None] }, { "$ne": ["$$ot", ""] } ] }
+                                }
+                            }
+                        },
+                        "initialValue": "",
+                        "in": {
+                            "$cond": [
+                                { "$eq": ["$$value", ""] },
+                                "$$this",
+                                { "$concat": ["$$value", ", ", "$$this"] }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        {"$project": {"client_orders": 0}}
+    ]
+    
+    clients = [format_mongo_id(c) for c in clients_collection.aggregate(pipeline)]
     resolved = resolve_client_handler_bulk(clients)
     
     if current_user["role"] == UserRole.EMPLOYEE:
@@ -1095,7 +1137,8 @@ def get_clients(current_user: dict = Depends(get_current_user)):
                 
     detail = {
         "employee_names": list(employee_names),
-        "profile_names": list(profile_names)
+        "profile_names": list(profile_names),
+        "order_type_options": ORDER_TYPE_OPTIONS
     }
 
     return {
@@ -1544,6 +1587,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             "client_whatsapp_number": "whatsapp_no",
             "client_link": "client_link",
             "bank_account": "bank_account",
+            "client_affiliations": "affiliation",
             "client_affiliations": "affiliation"
         }
         for k, v in client_updates.items():
@@ -1639,6 +1683,7 @@ def create_unified_record(request: UnifiedCreateRequest, current_user: dict = De
             "bank_account": request.client_bank_account,
             "affiliation": request.client_affiliation,
             "payment_drive_link": request.payment_drive_link,
+            "client_drive_link": request.client_drive_link,
             "client_drive_link": request.client_drive_link,
             "total_orders": 0,
             "client_handler": current_user.get("email") if current_user["role"] == UserRole.EMPLOYEE else get_user_email_by_name(request.client_handler),
