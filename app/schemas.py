@@ -44,6 +44,8 @@ class UserBase(BaseModel):
     profile_names: list[str] = Field(default_factory=list)  # Employees can maintain multiple profiles
     role: UserRole = UserRole.EMPLOYEE
     phone_number: Optional[str] = None
+    personal_email: Optional[EmailStr] = None       # Personal email (separate from work/login email)
+    personal_number: Optional[str] = None           # Personal mobile/phone number
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
     branch: Optional[str] = None
     id_range_start: Optional[int] = None
@@ -54,6 +56,8 @@ class UserCreate(UserBase):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone_number: Optional[str] = None
+    personal_email: Optional[EmailStr] = None       # Personal email
+    personal_number: Optional[str] = None           # Personal mobile number
     branch: Optional[str] = None
     profile_names: list[str] = Field(default_factory=list)
     password: str
