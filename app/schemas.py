@@ -50,6 +50,7 @@ class UserBase(BaseModel):
     branch: Optional[str] = None
     id_range_start: Optional[int] = None
     id_range_end: Optional[int] = None
+    has_photo: bool = False
 
 
 class UserCreate(UserBase):
@@ -75,6 +76,13 @@ class ProfileUpdate(BaseModel):
     email: EmailStr
     profile_name: str
     new_profile_name: Optional[str] = None  # Only required for 'update' operation
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    personal_email: Optional[EmailStr] = None
+    personal_number: Optional[str] = None
+    branch: Optional[str] = None
 
 class UserResponse(UserBase):
     id: str = Field(..., alias="_id")
@@ -168,6 +176,7 @@ class ClientBase(BaseModel):
     total_orders: int = 0
     client_handler: Optional[str] = None  # Stores employee EMAIL (unique reference)
     client_handler_name: Optional[str] = None  # Resolved full name for display (not stored in DB)
+    has_photo: bool = False
 
     @field_validator("email", "whatsapp_no", "client_ref_no", "client_link", "bank_account", "affiliation", mode="before")
     @classmethod

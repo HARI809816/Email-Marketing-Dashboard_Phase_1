@@ -1,7 +1,8 @@
 from typing import Optional, Any
 import re
+import os
 
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -29,6 +30,7 @@ from app.schemas import (
     OTPVerifyRequest,
     PermissionUpdate,
     ProfileUpdate,
+    UserProfileUpdate,
     DashboardUpdate,
     ApiResponse,
     ClientAssignRequest,
@@ -75,6 +77,7 @@ from app.database import (
 
 from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info
 from bson import ObjectId
+from bson.binary import Binary
 
 
 app = FastAPI(title="Email Dashboard API")
@@ -768,6 +771,117 @@ def update_user_permissions(data: PermissionUpdate, current_user: dict = Depends
         "message": f"ID range updated for {data.email}",
         "data": None
     }
+
+
+@app.put("/users/profile", response_model=ApiResponse[UserResponse])
+@app.put("/users/{email}/profile", response_model=ApiResponse[UserResponse])
+async def update_user_profile(
+    full_name: Optional[str] = Form(None),
+    phone_number: Optional[str] = Form(None),
+    personal_email: Optional[str] = Form(None),
+    personal_number: Optional[str] = Form(None),
+    branch: Optional[str] = Form(None),
+    photo: Optional[UploadFile] = File(None),
+    email: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    target_email = email or current_user["email"]
+    
+    # Check permissions
+    if current_user["role"] != UserRole.ADMIN and current_user["email"] != target_email:
+        raise HTTPException(status_code=403, detail="Not authorized to update this profile")
+        
+    update_dict = {}
+    if full_name is not None: update_dict["full_name"] = full_name
+    if phone_number is not None: update_dict["phone_number"] = phone_number
+    if personal_email is not None: update_dict["personal_email"] = personal_email
+    if personal_number is not None: update_dict["personal_number"] = personal_number
+    if branch is not None: update_dict["branch"] = branch
+    
+    # Handle optional photo upload
+    if photo is not None:
+        if not photo.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        content = await photo.read()
+        if len(content) > 1 * 1024 * 1024:  # 1MB limit
+            raise HTTPException(status_code=400, detail="Image size must be less than 1MB")
+        update_dict["photo_data"] = Binary(content)
+        update_dict["photo_mime"] = photo.content_type
+        update_dict["has_photo"] = True
+        
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No fields to update")
+        
+    users_collection.update_one({"email": target_email}, {"$set": update_dict})
+    updated_user = users_collection.find_one({"email": target_email})
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Remove binary data from JSON response to prevent serialization error
+    if "photo_data" in updated_user:
+        updated_user.pop("photo_data")
+        
+    # Decrypt password for schema consistency
+    if "password" in updated_user:
+        try:
+            updated_user["password"] = decrypt_password(updated_user.get("password", ""))
+        except Exception:
+            pass
+        
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Profile updated successfully",
+        "data": format_mongo_id(updated_user)
+    }
+
+@app.get("/users/{email}/photo")
+def get_user_photo(email: str):
+    user = users_collection.find_one({"email": email})
+    if user and user.get("photo_data"):
+        return Response(content=user["photo_data"], media_type=user.get("photo_mime", "image/png"))
+        
+    # Fallback to static default avatar
+    default_path = "static/default_user.png"
+    if os.path.exists(default_path):
+        with open(default_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/png")
+    return Response(content=b"", status_code=404)
+
+@app.post("/clients/{client_id}/photo", status_code=200)
+async def upload_client_photo(
+    client_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_manager_or_higher)
+):
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    content = await file.read()
+    if len(content) > 1 * 1024 * 1024:  # 1MB limit
+        raise HTTPException(status_code=400, detail="Image size must be less than 1MB")
+        
+    clients_collection.update_one(
+        {"client_id": client_id},
+        {"$set": {
+            "photo_data": Binary(content),
+            "photo_mime": file.content_type,
+            "has_photo": True
+        }}
+    )
+    return {"status": "success", "message": "Client photo uploaded successfully"}
+
+@app.get("/clients/{client_id}/photo")
+def get_client_photo(client_id: str):
+    client_doc = clients_collection.find_one({"client_id": client_id})
+    if client_doc and client_doc.get("photo_data"):
+        return Response(content=client_doc["photo_data"], media_type=client_doc.get("photo_mime", "image/png"))
+        
+    # Fallback to static default client avatar
+    default_path = "static/default_client.png"
+    if os.path.exists(default_path):
+        with open(default_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/png")
+    return Response(content=b"", status_code=404)
 
 
 @app.post("/users/profiles/append", response_model=ApiResponse[dict])
