@@ -188,6 +188,7 @@ class ClientResponse(ClientBase):
     id: str = Field(..., alias="_id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     client_handler_name: Optional[str] = None  # Resolved full name
+    order_id_db: Optional[list[str]] = None
     class Config:
         populate_by_name = True
 

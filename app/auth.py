@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from app.database import users_collection
+from app.database import users_collection, tokens_collection
 from app.schemas import TokenData, UserRole
 from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, ENCRYPTION_KEY
 
@@ -54,6 +54,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Check if token exists in database (not revoked/logged out)
+    token_record = tokens_collection.find_one({"token": token})
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired or logged out",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")

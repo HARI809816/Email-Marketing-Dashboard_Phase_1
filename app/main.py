@@ -59,7 +59,8 @@ from app.auth import (
     create_access_token,
     get_current_user,
     require_admin,
-    require_manager_or_higher
+    require_manager_or_higher,
+    oauth2_scheme
 )
 from app.database import (
     users_collection, 
@@ -536,6 +537,19 @@ def verify_otp(request: OTPVerifyRequest):
         "status": "success",
         "message": "OTP verified successfully",
         "data": {"access_token": access_token, "token_type": "bearer"}
+    }
+
+@app.post("/logout", response_model=ApiResponse[dict])
+async def logout(token: str = Depends(oauth2_scheme), current_user: dict = Depends(get_current_user)):
+    """
+    Logout the current user by invalidating their token.
+    """
+    tokens_collection.delete_one({"token": token})
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Logged out successfully",
+        "data": None
     }
 
 # --- USER & ADMIN CREATION ---
@@ -1158,6 +1172,13 @@ def get_clients(current_user: dict = Depends(get_current_user)):
                             ]
                         }
                     }
+                },
+                "order_id_db": {
+                    "$map": {
+                        "input": "$client_orders",
+                        "as": "order",
+                        "in": {"$toString": "$$order._id"}
+                    }
                 }
             }
         },
@@ -1672,15 +1693,45 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             upsert=True
         )
         
-        # Append the response from the frontend with extra columns to payment_history
-        history_record = payment_updates_raw.copy()
-        history_record.update({
-            "client_id": order["client_id"],
-            "order_id": order_custom_id,
-            "reference_id": order.get("reference_id"),
-            "created_at": datetime.utcnow()
-        })
-        payment_history_collection.insert_one(history_record)
+    # Sync with payment_history_collection if order, client, or payment fields were updated
+    if client_updates or order_updates or payment_updates_raw:
+        latest_order = orders_collection.find_one({"order_id": order_custom_id})
+        if latest_order:
+            latest_client = clients_collection.find_one({"client_id": latest_order["client_id"]})
+            latest_payment = payments_collection.find_one({"order_id": order_custom_id})
+            
+            client_name = latest_client.get("name") if latest_client else "Unknown Client"
+            
+            history_record = {
+                "client_name": client_name,
+                "client_id": latest_order["client_id"],
+                "order_id": order_custom_id,
+                "reference_id": latest_order.get("reference_id"),
+                "order_title": latest_order.get("title") or "Unknown Title",
+                "amount": latest_order.get("total_amount", 0.0),
+                "paid_amount": latest_payment.get("paid_amount", 0.0) if latest_payment else 0.0,
+                "payment_date": latest_payment.get("payment_date") if latest_payment else None,
+                "payment_received_account": latest_payment.get("payment_received_account") if latest_payment else None,
+                "phase_1_payment": latest_payment.get("phase_1_payment", 0.0) if latest_payment else 0.0,
+                "phase_1_payment_date": latest_payment.get("phase_1_payment_date") if latest_payment else None,
+                "phase_1_payment_details": latest_payment.get("phase_1_payment_details") if latest_payment else None,
+                "phase_2_payment": latest_payment.get("phase_2_payment", 0.0) if latest_payment else 0.0,
+                "phase_2_payment_date": latest_payment.get("phase_2_payment_date") if latest_payment else None,
+                "phase_2_payment_details": latest_payment.get("phase_2_payment_details") if latest_payment else None,
+                "phase_3_payment": latest_payment.get("phase_3_payment", 0.0) if latest_payment else 0.0,
+                "phase_3_payment_date": latest_payment.get("phase_3_payment_date") if latest_payment else None,
+                "phase_3_payment_details": latest_payment.get("phase_3_payment_details") if latest_payment else None,
+                "updated_at": datetime.utcnow()
+            }
+            
+            payment_history_collection.update_one(
+                {"order_id": order_custom_id},
+                {
+                    "$set": history_record,
+                    "$setOnInsert": {"created_at": datetime.utcnow()}
+                },
+                upsert=True
+            )
 
 
 

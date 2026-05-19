@@ -34,3 +34,7 @@ payments_collection.create_index("phase")  # For phase filtering in aggregation
 payment_history_collection.create_index("client_id")
 payment_history_collection.create_index("order_id") # Removed unique=True to allow append-only history
 payment_history_collection.create_index("payment_date")
+
+# Token Indexes
+tokens_collection.create_index("token", unique=True)
+tokens_collection.create_index("created_at", expireAfterSeconds=36000) # 10 hours (matches ACCESS_TOKEN_EXPIRE_MINUTES)
